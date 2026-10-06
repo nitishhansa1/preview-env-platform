@@ -1,5 +1,5 @@
 # Core REST API Framework and ASGI Server
-fastapi>=0.110.0
+fastapi>=0.142.2
 uvicorn[standard]>=0.28.0
 
 # Database ORM and PostgreSQL driver
