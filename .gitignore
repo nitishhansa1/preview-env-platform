@@ -1,0 +1,45 @@
+# Python & Virtual Environments
+__pycache__/
+*.pyc
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node & Frontend Build Artifacts
+node_modules/
+dist/
+build/
+.npm/
+.vite/
+
+# Environment Variables & Local Secrets (NEVER COMMIT SENSITIVE DATA)
+.env
+.env.*
+!.env.example
+*.secret
+*.pem
+*.key
+
+# Logs
+*.log
+
+# Docker & Container Build Caches
+.docker/
+
+# IDEs & Operating System Artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Kubernetes & Helm Temporary Files
+*.tgz
+.helm/
+rendered.yaml
