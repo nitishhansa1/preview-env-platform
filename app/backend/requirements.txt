@@ -4,7 +4,7 @@ uvicorn[standard]>=0.28.0
 
 # Database ORM and PostgreSQL driver
 sqlalchemy>=2.0.28
-psycopg2-binary>=2.9.9
+psycopg2-binary>=2.9.13
 
 # Environment Configuration and Schema Validation
 pydantic>=2.6.0
