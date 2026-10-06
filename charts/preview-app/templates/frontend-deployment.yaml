@@ -1,0 +1,96 @@
+{{/*
+==============================================================================
+frontend-deployment.yaml – React Frontend Deployment (nginx-unprivileged)
+==============================================================================
+Why: Serves the compiled Vite SPA. Runs as a separate Deployment so it can be
+     scaled and updated independently from the backend.
+
+Security hardening for nginx-unprivileged:
+  - The container already runs as UID 101 (nginx user in nginx-unprivileged).
+  - readOnlyRootFilesystem: true requires emptyDir mounts for the directories
+    NGINX writes to at runtime:
+      /tmp                – NGINX temporary files
+      /var/cache/nginx    – Proxy and fastcgi cache directories
+      /var/run            – nginx.pid file location
+==============================================================================
+*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "preview-app.fullname" . }}-frontend
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "preview-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  template:
+    metadata:
+      labels:
+        {{- include "preview-app.labels" . | nindent 8 }}
+        {{- include "preview-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: frontend
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: frontend
+          image: "{{ .Values.image.frontendRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Liveness: NGINX is alive as long as it can serve a response
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness: send traffic only once NGINX is fully initialised
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: {{ .Values.resources.frontend.requests.cpu }}
+              memory: {{ .Values.resources.frontend.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.frontend.limits.cpu }}
+              memory: {{ .Values.resources.frontend.limits.memory }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101    # nginx user in nginxinc/nginx-unprivileged
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        # nginx-unprivileged writes proxy_temp, client_body_temp, etc. here
+        - name: nginx-cache
+          emptyDir: {}
+        # nginx.pid is written here at startup
+        - name: nginx-run
+          emptyDir: {}

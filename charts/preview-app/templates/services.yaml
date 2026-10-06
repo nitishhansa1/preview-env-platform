@@ -1,0 +1,77 @@
+{{/*
+==============================================================================
+services.yaml – ClusterIP Services for backend & frontend; Headless for Postgres
+==============================================================================
+Why:
+  - Backend & Frontend get ClusterIP Services so the Ingress can route HTTP
+    traffic to them without knowing pod IPs (which change on every restart).
+  - Postgres gets a Headless Service (clusterIP: None). A headless service is
+    required by StatefulSets: it gives each pod a stable DNS name
+    (<pod-name>.<service-name>.<namespace>.svc.cluster.local) that survives
+    rescheduling. The backend connects to the service name, not the pod IP.
+==============================================================================
+*/}}
+
+# ── Backend ClusterIP Service ─────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "preview-app.fullname" . }}-backend
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "preview-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+
+---
+
+# ── Frontend ClusterIP Service ────────────────────────────────────────────────
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "preview-app.fullname" . }}-frontend
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "preview-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: frontend
+
+---
+
+# ── Postgres Headless Service ─────────────────────────────────────────────────
+# clusterIP: None makes this headless so StatefulSet pods get stable DNS names.
+# The backend connects via: <release>-postgres:5432
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "preview-app.fullname" . }}-postgres
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  type: ClusterIP
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    {{- include "preview-app.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres

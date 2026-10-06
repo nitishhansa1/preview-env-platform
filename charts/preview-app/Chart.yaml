@@ -1,0 +1,16 @@
+apiVersion: v2
+name: preview-app
+description: |
+  Helm chart that deploys one ephemeral preview environment per GitHub Pull Request.
+  Argo CD ApplicationSet installs this chart once per open PR, each in its own
+  namespace (pr-<number>), with its own PostgreSQL database and Ingress hostname.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - preview-environment
+  - gitops
+  - argocd
+  - ephemeral
+  - fastapi
+  - react

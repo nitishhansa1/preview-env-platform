@@ -1,0 +1,60 @@
+{{/*
+==============================================================================
+ingress.yaml – NGINX Ingress routing for the PR preview environment
+==============================================================================
+Why: Exposes both the frontend and backend API under ONE hostname
+     (pr-<prNumber>.<baseDomain>) so reviewers can open a single URL.
+
+Routing strategy:
+  /api  →  backend Service (port 8000)  – FastAPI REST API
+  /     →  frontend Service (port 8080) – NGINX serving the compiled React SPA
+
+The frontend NGINX config is responsible only for serving static files.
+API traffic is NOT proxied by the frontend container in Kubernetes – the
+Ingress controller routes /api directly to the backend. This keeps the
+frontend NGINX configuration simple and the routing transparent.
+
+Note: The `use-regex: "false"` approach with Prefix pathType is used instead
+of regex paths to remain compatible across different NGINX Ingress versions.
+The more-specific /api path must be listed before / to get priority.
+==============================================================================
+*/}}
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "preview-app.fullname" . }}-ingress
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+  annotations:
+    # Tell the controller which IngressClass handles this resource
+    kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
+    # Disable SSL redirect since preview envs use plain HTTP with nip.io
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    # Strip the /api prefix when forwarding to the backend so FastAPI
+    # receives requests at / rather than /api/
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    # Use regex captures for the rewrite
+    nginx.ingress.kubernetes.io/use-regex: "true"
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  rules:
+    - host: "pr-{{ .Values.prNumber }}.{{ .Values.ingress.baseDomain }}"
+      http:
+        paths:
+          # /api and /api/* → backend (strip the /api prefix via rewrite-target)
+          - path: /api(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "preview-app.fullname" . }}-backend
+                port:
+                  name: http
+          # / and everything else → frontend SPA
+          - path: /()(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: {{ include "preview-app.fullname" . }}-frontend
+                port:
+                  name: http

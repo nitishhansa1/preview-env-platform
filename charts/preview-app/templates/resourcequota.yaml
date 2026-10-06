@@ -1,0 +1,38 @@
+{{/*
+==============================================================================
+resourcequota.yaml – Namespace ResourceQuota per PR preview
+==============================================================================
+Why: Without a ResourceQuota, a single ephemeral PR environment can schedule
+     unlimited pods and claim all CPU/RAM on the node, starving every other
+     PR preview (and even production workloads on a shared cluster).
+
+     One ResourceQuota per namespace ensures that:
+       - No single PR can hog the cluster ("noisy neighbour" problem).
+       - Laptop resources (8 GB RAM) are shared fairly across 2–3 open PRs.
+       - Pod sprawl is capped so a misconfigured Deployment doesn't create
+         hundreds of crash-looping replicas.
+==============================================================================
+*/}}
+
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "preview-app.fullname" . }}-quota
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+spec:
+  hard:
+    # Total CPU that all pods in this namespace can request (not limit).
+    # Requests are what the scheduler uses for placement decisions.
+    requests.cpu: {{ .Values.quota.cpu | quote }}
+
+    # Total RAM that all pods in this namespace can request.
+    requests.memory: {{ .Values.quota.memory | quote }}
+
+    # Maximum number of Pod objects (Running + Pending) in the namespace.
+    # backend + frontend + postgres = 3; +2 spare for restart overlap.
+    pods: {{ .Values.quota.pods | quote }}
+
+    # Maximum number of PersistentVolumeClaims.
+    # Only Postgres needs a PVC; this prevents accidental PVC sprawl.
+    persistentvolumeclaims: {{ .Values.quota.persistentvolumeclaims | quote }}

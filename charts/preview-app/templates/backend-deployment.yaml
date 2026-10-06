@@ -1,0 +1,106 @@
+{{/*
+==============================================================================
+backend-deployment.yaml – FastAPI Backend Deployment
+==============================================================================
+Why: Runs the Job Application Tracker API that reads/writes to the per-PR
+     Postgres instance. One Deployment per preview environment guarantees
+     complete isolation between PRs.
+
+Security hardening:
+  - runAsNonRoot: the container image already runs as UID 10001
+  - allowPrivilegeEscalation: false – no sudo, no setuid binaries
+  - drop ALL capabilities – minimal Linux privilege surface
+  - readOnlyRootFilesystem: true – the FastAPI app needs no writable root;
+    an emptyDir at /tmp covers any temporary file operations
+==============================================================================
+*/}}
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "preview-app.fullname" . }}-backend
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "preview-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        {{- include "preview-app.labels" . | nindent 8 }}
+        {{- include "preview-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: backend
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backendRepository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+              protocol: TCP
+          env:
+            # DATABASE_URL is stored in the Secret to keep credentials out of pod specs
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "preview-app.fullname" . }}-db-secret
+                  key: DATABASE_URL
+            # Version metadata surfaced by /api/version for the preview banner
+            - name: APP_VERSION
+              value: {{ .Chart.AppVersion | quote }}
+            - name: GIT_SHA
+              value: {{ .Values.gitSha | quote }}
+            - name: PR_NUMBER
+              value: {{ .Values.prNumber | quote }}
+            # Allow all origins in preview envs (the URL changes per PR)
+            - name: CORS_ORIGINS
+              value: "*"
+          # Liveness Probe: Kubernetes restarts the container only if the process hangs.
+          # Does NOT check the DB – an unresponsive DB must not cause a restart loop.
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Readiness Probe: Traffic is withheld until the DB is reachable.
+          # This gracefully handles the Postgres startup race condition.
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: {{ .Values.resources.backend.requests.cpu }}
+              memory: {{ .Values.resources.backend.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.backend.limits.cpu }}
+              memory: {{ .Values.resources.backend.limits.memory }}
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            # FastAPI/uvicorn may write to /tmp (e.g. multipart upload staging)
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,119 @@
+# ==============================================================================
+# values.yaml – Default chart values for the preview-app Helm chart
+# ==============================================================================
+# Every key is documented with a comment so reviewers understand the knobs.
+# Argo CD ApplicationSet overrides prNumber, gitSha, and image.tag per PR.
+# ==============================================================================
+
+# --------------------------------------------------
+# PR Metadata – injected by Argo CD ApplicationSet
+# --------------------------------------------------
+
+# The pull-request number (string). Used in the Ingress host and labels.
+prNumber: "0"
+
+# The short Git commit SHA for the PR head (e.g. "abc1234").
+# Surfaced by the backend /api/version endpoint so reviewers can verify the build.
+gitSha: "HEAD"
+
+# --------------------------------------------------
+# Container Image Configuration
+# --------------------------------------------------
+image:
+  # OCI registry hostname (GitHub Container Registry).
+  registry: ghcr.io
+
+  # Backend image repository path. Replace with your GitHub username/org.
+  backendRepository: ghcr.io/nitishhansa1/preview-env-platform-backend
+
+  # Frontend image repository path. Replace with your GitHub username/org.
+  frontendRepository: ghcr.io/nitishhansa1/preview-env-platform-frontend
+
+  # Image tag – Argo CD overrides this to "pr-<number>" so each PR runs its own build.
+  # Default "latest" is used only for local Helm testing; never deployed to real clusters.
+  tag: "latest"
+
+  # Kubernetes image pull policy.
+  # Use "Always" in preview envs to ensure the latest tag is always fetched.
+  pullPolicy: Always
+
+# --------------------------------------------------
+# Ingress Configuration
+# --------------------------------------------------
+ingress:
+  # Kubernetes IngressClass name. Must match the IngressClass installed in the cluster.
+  className: nginx
+
+  # Wildcard base domain used for nip.io routing.
+  # Final host will be: pr-<prNumber>.<baseDomain>
+  # Example: pr-42.127.0.0.1.nip.io
+  # Change this to your cluster's node IP when running on kind/k3d.
+  baseDomain: "127.0.0.1.nip.io"
+
+# --------------------------------------------------
+# Resource Requests & Limits
+# Kept intentionally SMALL to run on an 8 GB RAM laptop.
+# --------------------------------------------------
+resources:
+  backend:
+    requests:
+      # Minimum CPU the scheduler guarantees to the backend pod.
+      cpu: 50m
+      # Minimum RAM guaranteed to the backend pod.
+      memory: 64Mi
+    limits:
+      # Hard ceiling on CPU usage (pod gets throttled if exceeded, not killed).
+      cpu: 200m
+      # Hard ceiling on RAM (pod gets OOMKilled if exceeded).
+      memory: 128Mi
+
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+  postgres:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 256Mi
+
+# --------------------------------------------------
+# PostgreSQL Configuration
+# --------------------------------------------------
+postgres:
+  # Size of the PersistentVolumeClaim for PostgreSQL data.
+  storage: 1Gi
+
+  # Database username.
+  user: preview_user
+
+  # Database name.
+  db: preview_db
+
+  # Salt used to derive a deterministic, stable DB password per PR via SHA-256
+  # (avoids password mutation on every Argo CD sync when running in offline helm template mode).
+  passwordSalt: "preview-db-secret-salt"
+
+# --------------------------------------------------
+# Namespace ResourceQuota
+# Caps total consumption of ONE preview environment so a runaway PR cannot
+# exhaust the cluster and break every other team member's previews.
+# --------------------------------------------------
+quota:
+  # Total CPU requests allowed in the namespace.
+  cpu: "800m"
+
+  # Total RAM requests allowed in the namespace.
+  memory: "768Mi"
+
+  # Maximum number of pods in the namespace (backend + frontend + postgres + spare).
+  pods: "5"
+
+  # Maximum number of PersistentVolumeClaims (one for Postgres).
+  persistentvolumeclaims: "2"

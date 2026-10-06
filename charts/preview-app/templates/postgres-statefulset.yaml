@@ -1,0 +1,113 @@
+{{/*
+==============================================================================
+postgres-statefulset.yaml – Dedicated PostgreSQL StatefulSet
+==============================================================================
+Why: A StatefulSet (not a Deployment) is used because:
+  1. It provides a stable, predictable network identity (pod name = hostname).
+  2. It binds to a PersistentVolumeClaim template, giving each PR its own
+     isolated, durable disk that survives pod restarts.
+
+One StatefulSet per PR namespace means PRs cannot accidentally share or
+corrupt each other's database – critical for safe schema migration testing.
+==============================================================================
+*/}}
+
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "preview-app.fullname" . }}-postgres
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "preview-app.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "preview-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "preview-app.labels" . | nindent 8 }}
+        {{- include "preview-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: postgres
+              containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.db | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.user | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "preview-app.fullname" . }}-db-secret
+                  key: DB_PASSWORD
+          # Readiness probe: use pg_isready with 127.0.0.1 (NOT 'localhost').
+          # IMPORTANT: On many Linux systems inside containers, 'localhost' resolves
+          # to the IPv6 loopback (::1), but Postgres only listens on IPv4 (127.0.0.1)
+          # by default. Using 'localhost' causes the probe to fail with "could not
+          # connect to server: Connection refused". Always use 127.0.0.1 explicitly.
+          readinessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.user | quote }}
+                - -d
+                - {{ .Values.postgres.db | quote }}
+                - -h
+                - "127.0.0.1"
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            exec:
+              command:
+                - pg_isready
+                - -U
+                - {{ .Values.postgres.user | quote }}
+                - -d
+                - {{ .Values.postgres.db | quote }}
+                - -h
+                - "127.0.0.1"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: {{ .Values.resources.postgres.requests.cpu }}
+              memory: {{ .Values.resources.postgres.requests.memory }}
+            limits:
+              cpu: {{ .Values.resources.postgres.limits.cpu }}
+              memory: {{ .Values.resources.postgres.limits.memory }}
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+              # postgres refuses to start if the data dir is the mount root;
+              # pgdata subdirectory sidesteps the "lost+found" issue on ext4
+              subPath: pgdata
+  # PVC template: Kubernetes creates one PVC per pod automatically.
+  # Argo CD's namespace finalizer will delete the PVC when the PR is closed.
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data
+        labels:
+          {{- include "preview-app.labels" . | nindent 10 }}
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: {{ .Values.postgres.storage }}
