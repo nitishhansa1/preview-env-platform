@@ -84,7 +84,7 @@ jobs:
 
       # Build Backend Image
       - name: Build Backend Image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/backend
           file: ./app/backend/Dockerfile
@@ -103,7 +103,7 @@ jobs:
 
       # Push Backend Image to GHCR
       - name: Push Backend Image to GHCR
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/backend
           file: ./app/backend/Dockerfile
@@ -112,7 +112,7 @@ jobs:
 
       # Build & Push Frontend Image to GHCR
       - name: Build & Push Frontend Image to GHCR
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./app/frontend
           file: ./app/frontend/Dockerfile
