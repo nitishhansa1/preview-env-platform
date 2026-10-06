@@ -1,0 +1,61 @@
+# ==============================================================================
+# Argo CD ApplicationSet: Pull Request Generator for Ephemeral Previews
+# ==============================================================================
+# Purpose:
+#   Automatically watches GitHub Pull Requests. When a PR is opened:
+#     - Instantiates an Argo CD Application named 'preview-pr-<number>'
+#     - Deploys the Helm chart into a dedicated namespace 'pr-<number>'
+#     - Passes dynamic PR parameters (e.g. prNumber: <number>)
+#   When the PR is closed or merged:
+#     - Argo CD automatically deletes the Application and cascades deletion
+#       to all resources in the 'pr-<number>' namespace.
+# ==============================================================================
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: preview-env-applicationset
+  namespace: argocd
+spec:
+  generators:
+    - pullRequest:
+        github:
+          # Repository owner and name
+          owner: nitishhansa1
+          repo: preview-env-platform
+          # Token secret used to authenticate against GitHub API to avoid rate limits
+          tokenRef:
+            secretName: github-pr-token
+            key: token
+        requeueAfterSeconds: 30
+  template:
+    metadata:
+      name: 'preview-pr-{{number}}'
+      labels:
+        preview.env/pr: '{{number}}'
+    spec:
+      project: default
+      source:
+        repoURL: 'https://github.com/nitishhansa1/preview-env-platform.git'
+        targetRevision: '{{head_sha}}' # Syncs the exact PR commit SHA
+        path: charts/preview-app
+        helm:
+          releaseName: 'preview-pr-{{number}}'
+          values: |
+            global:
+              prNumber: "{{number}}"
+            backend:
+              image:
+                tag: "pr-{{number}}"
+            frontend:
+              image:
+                tag: "pr-{{number}}"
+      destination:
+        server: 'https://kubernetes.default.svc'
+        namespace: 'pr-{{number}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
