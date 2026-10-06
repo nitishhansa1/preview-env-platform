@@ -1,0 +1,62 @@
+# ==============================================================================
+# Preview Environment Platform - Local Development Docker Compose
+# ==============================================================================
+# Purpose:
+#   Allows developers to spin up the full stack (PostgreSQL + FastAPI Backend + React Frontend)
+#   locally with a single command: `docker compose up --build`.
+# ==============================================================================
+
+services:
+  # Dedicated PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: preview-local-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-preview_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-preview_password}
+      POSTGRES_DB: ${POSTGRES_DB:-preview_db}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-preview_user} -d ${POSTGRES_DB:-preview_db} -h 127.0.0.1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Job Application Tracker FastAPI Backend
+  backend:
+    build:
+      context: ./app/backend
+      dockerfile: Dockerfile
+    container_name: preview-local-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-preview_user}:${POSTGRES_PASSWORD:-preview_password}@postgres:5432/${POSTGRES_DB:-preview_db}
+      APP_VERSION: "0.1.0-local"
+      GIT_SHA: "local-dev"
+      PR_NUMBER: ""
+      CORS_ORIGINS: "*"
+      LOG_LEVEL: "INFO"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Job Application Tracker React Frontend (Non-root NGINX proxying /api to backend)
+  frontend:
+    build:
+      context: ./app/frontend
+      dockerfile: Dockerfile
+    container_name: preview-local-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
