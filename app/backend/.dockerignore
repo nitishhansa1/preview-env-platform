@@ -1,0 +1,28 @@
+# Python Bytecode and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+
+# Local Environment Variables & Secrets
+.env
+.env.*
+*.secret
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Git Metadata
+.git/
+.github/
+.gitignore
