@@ -3,7 +3,7 @@ fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
 
 # Database ORM and PostgreSQL driver
-sqlalchemy>=2.0.28
+sqlalchemy>=2.1.4
 psycopg2-binary>=2.9.9
 
 # Environment Configuration and Schema Validation
