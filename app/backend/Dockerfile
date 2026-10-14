@@ -12,7 +12,7 @@
 # ==============================================================================
 
 # --- Stage 1: Build & Wheel Compiler ---
-FROM python:3.12-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
@@ -31,7 +31,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 
 # --- Stage 2: Final Minimal Runtime ---
-FROM python:3.12-slim AS runner
+FROM python:3.14-slim AS runner
 
 WORKDIR /app
 
