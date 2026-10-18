@@ -23,6 +23,8 @@ spec:
           # Repository owner and name
           owner: nitishhansa1
           repo: preview-env-platform
+          labels:
+            - preview
           # Token secret used to authenticate against GitHub API to avoid rate limits
           tokenRef:
             secretName: github-pr-token
