@@ -78,8 +78,13 @@ async def lifespan(app: FastAPI):
     )
 
     # 1. Database connection retry loop
-    max_retries = 5
-    retry_interval = 2
+    # Why 15 retries × 4s = 60s total budget:
+    # A freshly provisioned Postgres PVC (e.g. after Argo CD recreates the
+    # StatefulSet) can take 20-40s to become ready. The original 5×2s=10s
+    # budget was too short and caused "UndefinedTable" 500 errors because
+    # create_all() was never called.
+    max_retries = 15
+    retry_interval = 4
     connected = False
 
     for attempt in range(1, max_retries + 1):
