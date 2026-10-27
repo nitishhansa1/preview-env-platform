@@ -43,15 +43,15 @@ spec:
         path: charts/preview-app
         helm:
           releaseName: 'preview-pr-{{number}}'
-          values: |
-            global:
-              prNumber: "{{number}}"
-            backend:
-              image:
-                tag: "pr-{{number}}"
-            frontend:
-              image:
-                tag: "pr-{{number}}"
+          parameters:
+            # prNumber and gitSha are top-level keys in values.yaml
+            - name: prNumber
+              value: '{{number}}'
+            - name: gitSha
+              value: '{{head_sha}}'
+            # image.tag is a single key used by both frontend and backend deployments
+            - name: image.tag
+              value: 'pr-{{number}}'
       destination:
         server: 'https://kubernetes.default.svc'
         namespace: 'pr-{{number}}'
