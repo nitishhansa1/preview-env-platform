@@ -31,30 +31,40 @@ metadata:
     kubernetes.io/ingress.class: {{ .Values.ingress.className | quote }}
     # Disable SSL redirect since preview envs use plain HTTP with nip.io
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    # Strip the /api prefix when forwarding to the backend so FastAPI
-    # receives requests at / rather than /api/
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-    # Use regex captures for the rewrite
-    nginx.ingress.kubernetes.io/use-regex: "true"
 spec:
   ingressClassName: {{ .Values.ingress.className }}
   rules:
-    - host: "pr-{{ .Values.prNumber }}.{{ .Values.ingress.baseDomain }}"
+    {{- $prNum := .Values.prNumber | default "0" }}
+    {{- if and .Values.global .Values.global.prNumber }}
+      {{- $prNum = .Values.global.prNumber }}
+    {{- end }}
+    {{- $prNumStr := $prNum | toString }}
+    {{- $configuredHost := printf "pr-%s.%s" $prNumStr .Values.ingress.baseDomain }}
+    {{- $dashedNipHost := printf "pr-%s.127-0-0-1.nip.io" $prNumStr }}
+    {{- $dottedNipHost := printf "pr-%s.127.0.0.1.nip.io" $prNumStr }}
+    {{- $localHostDomain := printf "pr-%s.localho.st" $prNumStr }}
+    {{- $hosts := list $configuredHost $dashedNipHost $dottedNipHost $localHostDomain }}
+    {{- if .Values.ingress.extraHosts }}
+      {{- $hosts = concat $hosts .Values.ingress.extraHosts }}
+    {{- end }}
+    {{- range ($hosts | uniq) }}
+    - host: {{ . | quote }}
       http:
         paths:
-          # /api and /api/* → backend (strip the /api prefix via rewrite-target)
-          - path: /api(/|$)(.*)
-            pathType: ImplementationSpecific
+          # /api and /api/* → backend (preserves /api prefix required by FastAPI)
+          - path: /api
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "preview-app.fullname" . }}-backend
+                name: {{ include "preview-app.fullname" $ }}-backend
                 port:
                   name: http
           # / and everything else → frontend SPA
-          - path: /()(.*)
-            pathType: ImplementationSpecific
+          - path: /
+            pathType: Prefix
             backend:
               service:
-                name: {{ include "preview-app.fullname" . }}-frontend
+                name: {{ include "preview-app.fullname" $ }}-frontend
                 port:
                   name: http
+    {{- end }}

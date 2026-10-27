@@ -60,3 +60,18 @@ This document records the technical hurdles, debugging steps, and architectural 
   `{{ printf "%s-%s" .Values.prNumber .Values.postgres.passwordSalt | sha256sum | trunc 24 }}`.
 - **Lesson**: GitOps controllers rendering manifests offline cannot query cluster state during manifest generation. Use deterministic hashing from PR metadata or dedicated secret operators (e.g. External Secrets Operator) to guarantee secret stability.
 
+---
+
+### Issue 8: `nip.io` DNS Parsing Collision with PR Subdomains & Ingress Rewrite Stripping
+- **Problem**: Opening `http://pr-29.127.0.0.1.nip.io:8080/` in the browser produced `ERR_CONNECTION_TIMED_OUT` ("This site can’t be reached"), and API requests routed through the Ingress returned `404 Not Found: {"detail":"Not Found"}`.
+- **Cause**:
+  1. **DNS Parsing Quirk**: `nip.io` extracts the first four dot-separated integer octets. In `pr-29.127.0.0.1.nip.io`, it parsed `29.127.0.0` as the IP address (a public DoD-allocated range) instead of `127.0.0.1`.
+  2. **Port Mismatch**: Kind forwards host port `80` to the Ingress controller. Connecting to port `8080` fails unless a manual `kubectl port-forward` is active.
+  3. **Path Prefix Stripping**: `ingress.yaml` used `nginx.ingress.kubernetes.io/rewrite-target: /$2` and regex `path: /api(/|$)(.*)`. This stripped `/api` and forwarded requests to FastAPI as `/applications` instead of `/api/applications`. Because FastAPI defines its routes at `/api/applications`, it responded with HTTP 404.
+- **Fix**:
+  1. Updated base domain to dashed notation `127-0-0-1.nip.io` (`pr-<num>.127-0-0-1.nip.io`) and added RFC 6761 `pr-<num>.localho.st` rules to the Ingress template.
+  2. Removed `rewrite-target` and regex captures from `ingress.yaml`, using standard `pathType: Prefix` for `/api` (backend) and `/` (frontend).
+  3. Pointed browsers to `http://pr-29.127-0-0-1.nip.io/` or `http://pr-29.localho.st/` on default HTTP port 80.
+- **Lesson**: When generating dynamic DNS subdomains with `nip.io`, always use dashed IP notation (`127-0-0-1.nip.io`) or `.localho.st` to prevent subdomain numbers from colliding with IPv4 octet parsing. Avoid NGINX rewrite-target rules when the backend application already expects the path prefix.
+
+

@@ -11,7 +11,7 @@
 set -euo pipefail
 
 PR_NUMBER="${1:-1}"
-DOMAIN_SUFFIX="${2:-127.0.0.1.nip.io}"
+DOMAIN_SUFFIX="${2:-127-0-0-1.nip.io}"
 PREVIEW_HOST="pr-${PR_NUMBER}.${DOMAIN_SUFFIX}"
 NAMESPACE="pr-${PR_NUMBER}"
 

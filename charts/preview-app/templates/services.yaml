@@ -75,3 +75,18 @@ spec:
   selector:
     {{- include "preview-app.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: postgres
+
+---
+
+# ── Backend Alias Service ─────────────────────────────────────────────────────
+# Allows internal pods or development proxies to reach backend via 'backend'
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    {{- include "preview-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  type: ExternalName
+  externalName: {{ include "preview-app.fullname" . }}-backend.{{ .Release.Namespace }}.svc.cluster.local

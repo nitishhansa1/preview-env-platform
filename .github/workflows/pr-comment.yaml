@@ -20,7 +20,7 @@ jobs:
           script: |
             const prNumber = context.issue.number;
             const commitSha = context.sha.substring(0, 7);
-            const domainSuffix = process.env.DOMAIN_SUFFIX || '127.0.0.1.nip.io';
+            const domainSuffix = process.env.DOMAIN_SUFFIX || '127-0-0-1.nip.io';
             const previewUrl = `http://pr-${prNumber}.${domainSuffix}`;
 
             const commentBody = `### 🚀 Preview Environment Ready!

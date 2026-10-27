@@ -44,14 +44,10 @@ spec:
         helm:
           releaseName: 'preview-pr-{{number}}'
           values: |
-            global:
-              prNumber: "{{number}}"
-            backend:
-              image:
-                tag: "pr-{{number}}"
-            frontend:
-              image:
-                tag: "pr-{{number}}"
+            prNumber: "{{number}}"
+            gitSha: "{{head_sha}}"
+            image:
+              tag: "pr-{{number}}"
       destination:
         server: 'https://kubernetes.default.svc'
         namespace: 'pr-{{number}}'
