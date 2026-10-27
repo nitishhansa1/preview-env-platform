@@ -187,7 +187,7 @@ export default function App() {
       <main className="main-content">
         <section className="header-section">
           <div className="header-title">
-            <h1>💼 Job Application Tracker</h1>
+            <h1>💼 Job Application Tracker — CI/CD Test</h1>
             <p>Track job opportunities, interview stages, and offers in this preview environment.</p>
           </div>
           <button
