@@ -53,6 +53,25 @@ This document records the technical hurdles, debugging steps, and architectural 
 
 ---
 
+### Issue 8: Argo CD Sync Failure — StatefulSet `volumeClaimTemplates` is Immutable
+
+- **Symptom**: Argo CD showed `SyncFailed` with the error:
+  `StatefulSet.apps "preview-pr-<N>-postgres" is invalid: spec.volumeClaimTemplates: Forbidden: updates to statefulset spec for fields other than ... are forbidden`.
+- **Cause**: The `postgres-statefulset.yaml` Helm template applied `preview-app.labels` (which includes `preview.env/git-sha` and `preview.env/pr-number`) directly inside `volumeClaimTemplates.metadata.labels`. These values change on every new commit, so Argo CD attempted to patch the PVC template — a field Kubernetes marks as immutable after creation.
+- **Fix**: Removed the dynamic `preview-app.labels` helper from `volumeClaimTemplates.metadata.labels` and replaced it with a small set of stable, never-changing labels (`app.kubernetes.io/managed-by`, `app.kubernetes.io/instance`, `app.kubernetes.io/component`). These never change across syncs.
+- **Lesson**: `spec.volumeClaimTemplates` in a StatefulSet is immutable. Never put values that change per-commit (git SHA) or per-sync into that section.
+
+---
+
+### Issue 9: Argo CD ApplicationSet Helm Values Path Mismatch
+
+- **Symptom**: The preview banner in the UI always showed PR number `0` and image tag `latest`, even though the correct PR number was injected by the ApplicationSet.
+- **Cause**: The ApplicationSet used a nested `values:` block with wrong key paths (`global.prNumber`, `backend.image.tag`, `frontend.image.tag`), but the actual Helm chart has flat top-level keys: `prNumber`, `gitSha`, and a single `image.tag` shared by both deployments.
+- **Fix**: Replaced the free-form `values:` block with typed `parameters:` entries that map directly to the correct Helm value paths (`prNumber`, `gitSha`, `image.tag`).
+- **Lesson**: Always verify that ApplicationSet value paths exactly match the keys in `values.yaml`. Using `parameters:` (instead of a free-form `values:` YAML block) makes mismatches easier to catch because each key is explicit and validated.
+
+---
+
 ### Issue 7: Secret Mutation Across Argo CD Syncs in Offline Helm Rendering
 - **Problem**: On every Argo CD reconciliation cycle, the PostgreSQL password was regenerated, causing backend database authentication failures and crash loops.
 - **Cause**: Argo CD renders Helm charts offline using `helm template` without live cluster access. Therefore, Helm's `lookup` function always returns empty, causing `randAlphaNum` to generate a different random password on each sync.

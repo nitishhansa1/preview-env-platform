@@ -103,8 +103,14 @@ spec:
   volumeClaimTemplates:
     - metadata:
         name: postgres-data
+        # NOTE: Only stable labels here — never preview.env/git-sha or pr-number.
+        # volumeClaimTemplates is an IMMUTABLE field in StatefulSets; adding
+        # labels that change per-commit (git-sha) or per-PR (pr-number) causes
+        # Argo CD sync to fail with "field is immutable" on every new commit.
         labels:
-          {{- include "preview-app.labels" . | nindent 10 }}
+          app.kubernetes.io/managed-by: Helm
+          app.kubernetes.io/instance: {{ .Release.Name }}
+          app.kubernetes.io/component: postgres
       spec:
         accessModes:
           - ReadWriteOnce
