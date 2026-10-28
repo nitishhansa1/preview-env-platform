@@ -143,6 +143,7 @@ app.include_router(applications_router)
 # ==============================================================================
 
 @app.get("/healthz", response_model=HealthResponse, tags=["Observability"])
+@app.get("/api/health", response_model=HealthResponse, tags=["Observability"])
 def healthz():
     """
     Liveness Probe (/healthz):

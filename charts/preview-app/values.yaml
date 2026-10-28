@@ -34,7 +34,7 @@ image:
   tag: "latest"
 
   # Kubernetes image pull policy.
-  # Use "Always" in preview envs to ensure the latest tag is always fetched.
+  # Use "Always" in preview envs to ensure the latest tag is always fetched from GHCR on each push.
   pullPolicy: Always
 
 # --------------------------------------------------
@@ -46,9 +46,12 @@ ingress:
 
   # Wildcard base domain used for nip.io routing.
   # Final host will be: pr-<prNumber>.<baseDomain>
-  # Example: pr-42.127.0.0.1.nip.io
+  # Example: pr-42.127-0-0-1.nip.io (dashed IP format ensures public DNS resolves to 127.0.0.1)
   # Change this to your cluster's node IP when running on kind/k3d.
-  baseDomain: "127.0.0.1.nip.io"
+  baseDomain: "127-0-0-1.nip.io"
+
+  # Additional hostnames to accept (e.g. for custom domain routing)
+  extraHosts: []
 
 # --------------------------------------------------
 # Resource Requests & Limits
