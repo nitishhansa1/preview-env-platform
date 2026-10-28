@@ -9,7 +9,7 @@
 
 ## 1. Executive Summary & Problem Statement
 
-In standard agile software development workflows, pull request reviews rely almost entirely on code diffs, unit tests, and shared staging clusters. This introduces severe systemic bottlenecks:
+In standard agile software development workflows, pull request reviews rely almost entirely on static code diffs, local builds, and shared staging clusters. This introduces severe systemic bottlenecks:
 
 - **Staging Contention ("The Staging Queue")**: Multiple developers testing conflicting features or breaking changes collide on a single staging environment.
 - **Untested Infrastructure & Migrations**: Schema alterations, configuration changes, and ingress rule modifications cannot be tested realistically before merging to `main`.
@@ -84,46 +84,45 @@ In standard agile software development workflows, pull request reviews rely almo
 | **Persistence** | PostgreSQL 16 (StatefulSet) | Dedicated per-PR persistent database volume |
 | **Ingress & DNS** | NGINX Ingress Controller + `nip.io` | Wildcard domain routing without external DNS services |
 | **CI / Security** | GitHub Actions + Trivy | Static linting, unit tests, and vulnerability scanning |
+| **Container Engine**| Docker Desktop + Buildx | Multi-stage image compilation and container caching |
 
 ---
 
 ## 3. Step-by-Step Lifecycle Walkthrough
 
-### Step 1: Developer Opens a PR
-A developer pushes changes to a branch and creates a pull request targeting `main`. If configured, applying the `preview` label triggers the ephemeral flow.
+### Step 1: Developer Builds & Pushes Code
+Developers edit code and Helm manifests directly in the repository workspace. Container builds and layers are managed using Docker Buildx for ultra-fast incremental rebuilds.
+
+![VS Code ApplicationSet Manifest](images/vscode_applicationset_config.png)
+*Figure 1: Declaring the GitOps PR generator in `argocd/applicationset.yaml` using VS Code.*
+
+![Docker Desktop Builds History](images/docker_desktop_builds.png)
+*Figure 2: Docker Desktop Buildx tracking incremental frontend and backend container builds.*
 
 ### Step 2: CI Pipeline Execution
 GitHub Actions initiates `.github/workflows/ci.yaml`:
 1. **Backend Tests**: Runs `pytest` against endpoints and database logic.
 2. **Frontend Tests**: Installs dependencies and verifies Vite compilation (`npm run build`).
 3. **Security Scan**: Executes Aqua Security's `trivy` against the generated container images, failing on unmitigated Critical CVEs.
-4. **Publish**: Pushes container images to GitHub Container Registry tagged with the PR identifier:
-   - `ghcr.io/nitishhansa1/preview-env-platform-frontend:pr-29`
-   - `ghcr.io/nitishhansa1/preview-env-platform-backend:pr-29`
+4. **Publish**: Pushes container images to GitHub Container Registry tagged with the PR identifier (`ghcr.io/nitishhansa1/...:pr-29`).
 
 ### Step 3: GitOps Instantiation with Argo CD
-The Argo CD ApplicationSet (`argocd/applicationset.yaml`) continuously monitors GitHub PRs via the GitHub API. 
-Upon discovering a new PR, it creates a new Argo CD Application named `preview-pr-29` and overrides Helm values:
-```yaml
-helm:
-  releaseName: 'preview-pr-29'
-  values: |
-    prNumber: "29"
-    gitSha: "4149656692297336c4ceffef095888aa22c2a562"
-    image:
-      tag: "pr-29"
-```
+The Argo CD ApplicationSet continuously monitors GitHub PRs via the GitHub API. 
+Upon discovering a new PR, it creates an Argo CD Application named `preview-pr-29`, setting PR parameters and auto-syncing the Helm manifests into namespace `pr-29`.
+
+![Argo CD Synced and Healthy](images/argocd_synced_healthy.png)
+*Figure 3: Argo CD Dashboard showing Application `preview-pr-29` in complete `Synced` and `Healthy` state with commit `67bb44b`.*
 
 ### Step 4: Preview Environment Verification
-Once Argo CD reconciles, reviewers access the application at:
+Reviewers open the dynamic preview URL:
 `http://pr-29.127-0-0-1.nip.io`
 
 Reviewers can observe:
-- Ephemeral Environment banner with PR #, Git SHA, and Application Version.
-- Dynamic CRUD operations persisted in the isolated PostgreSQL database.
+- **Dynamic Preview Banner**: Displays active PR number (`#29`), current commit SHA (`67bb44b`), and application version (`v0.1.0`).
+- **Full Interactive CRUD**: Real job applications (`Shopify`, `Stripe`, `Google`) stored and modified inside the dedicated PostgreSQL StatefulSet.
 
-![Preview Dashboard Working Initial](images/preview_working_initial.png)
-*Figure 1: Ephemeral Preview Environment dashboard running for PR #29, showing healthy connection to backend and database.*
+![Preview Environment Healthy Dashboard](images/preview_environment_healthy.png)
+*Figure 4: Fully operational Ephemeral Preview Environment running for PR #29, successfully connected to the backend API and database.*
 
 ---
 
@@ -141,7 +140,7 @@ spec.volumeClaimTemplates: Invalid value: field is immutable
 ```
 
 ![Argo CD Sync Failure](images/argocd_sync_failed.png)
-*Figure 2: Argo CD UI reporting Sync Failed due to immutable field updates on the PostgreSQL StatefulSet.*
+*Figure 5: Argo CD UI reporting Sync Failed due to immutable field updates on the PostgreSQL StatefulSet.*
 
 #### Root Cause Analysis
 In `charts/preview-app/templates/postgres-statefulset.yaml`, the template originally included:
@@ -181,10 +180,10 @@ volumeClaimTemplates:
 ### Incident 2: HTTP 500 `relation "applications" does not exist`
 
 #### Symptoms
-When loading the preview dashboard, the header and dynamic commit badges rendered, but the applications table displayed an error banner: `Failed to load applications (HTTP 500)`.
+When loading the preview dashboard, the header rendered, but the applications table displayed an error banner: `Failed to load applications (HTTP 500)`.
 
 ![Preview HTTP 500 Error](images/preview_http_500_error.png)
-*Figure 3: Preview frontend displaying HTTP 500 error when querying the backend API.*
+*Figure 6: Preview frontend displaying HTTP 500 error when querying the backend API.*
 
 #### Root Cause Analysis
 Checking the backend container logs (`kubectl logs deployment/preview-pr-29-backend`):
@@ -325,5 +324,5 @@ Output:
 
 This project demonstrates a production-grade implementation of modern cloud-native practices:
 - **True GitOps**: Declarative infrastructure lifecycle using Argo CD ApplicationSets.
-- **Resilient Architectural Design**: Handled Kubernetes storage immutability, connection race conditions, and ingress rewrite policies.
+- **Resilient Architectural Design**: Solved Kubernetes storage immutability, connection race conditions, and ingress rewrite policies.
 - **Security-First Approach**: Hardened containers with non-root security contexts, read-only root filesystems, and strict quotas.
