@@ -1,27 +1,35 @@
 # 🚀 Preview Environment Platform (preview-env-platform)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.37-blue.svg?logo=kubernetes)](https://kubernetes.io/)
+[![Argo CD](https://img.shields.io/badge/GitOps-Argo%20CD-orange.svg?logo=argo)](https://argo-cd.readthedocs.io/)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61DAFB.svg?logo=react)](https://react.dev/)
+[![Docker](https://img.shields.io/badge/Containers-Docker%20Buildx-2496ED.svg?logo=docker)](https://www.docker.com/)
 
-> **Automated, ephemeral, per-Pull-Request preview environments on Kubernetes using GitOps (Argo CD), GitHub Actions, Helm, and NGINX Ingress.**
+> **Automated, ephemeral, per-Pull-Request preview environments on Kubernetes using GitOps (Argo CD), GitHub Actions, Helm 3, and NGINX Ingress.**
 
 ---
 
 ## 🚦 Project Status
-- **Done**: Application code (FastAPI backend, React frontend, PostgreSQL) and local Docker Compose orchestration.
-- **In Progress**: Helm chart configuration, GitHub Actions CI pipelines, and Argo CD ApplicationSet GitOps integration.
+- ✅ **Fully Operational**: Complete end-to-end GitOps pipeline running with live KinD cluster, dynamic PR generator, NGINX ingress routing, and automatic teardown.
+- 📖 **Comprehensive Documentation**: Full architectural guide, operational runbook, and production incident post-mortems available in [**`docs/PROJECT_DOCUMENTATION.md`**](docs/PROJECT_DOCUMENTATION.md).
 
 ---
 
 ## 📌 Overview
 
-**preview-env-platform** is a production-grade, cost-free portfolio DevOps project that automates the lifecycle of ephemeral environments for software development teams.
+**preview-env-platform** solves the classic engineering bottleneck: **"The Staging Queue"**. 
 
-### The Core Idea
-Every time a developer opens a Pull Request (PR) on GitHub:
-1. A temporary, fully isolated replica of the full application stack is provisioned in its own Kubernetes namespace (`pr-<number>`).
-2. The environment is allocated its own dedicated PostgreSQL database and domain name (e.g. `http://pr-123.<CLUSTER_IP>.nip.io`).
-3. When the PR is updated with new commits, the preview environment automatically syncs and updates.
-4. When the PR is merged or closed, the entire namespace, database, and all associated Kubernetes resources are deleted automatically.
+Instead of developers competing for a single shared staging environment or reviewers having to checkout branches and compile applications locally, this platform automatically spins up an isolated, production-like replica of the full application stack in its own Kubernetes namespace for every Pull Request.
+
+### The Lifecycle in a Nutshell
+1. **Developer pushes a commit / opens a PR** (e.g. PR `#29`).
+2. **GitHub Actions CI** lints, runs tests, scans images for CVEs using Trivy, and pushes container images to GitHub Container Registry (GHCR).
+3. **Argo CD ApplicationSet** discovers the PR, instantiates an application (`preview-pr-29`), and deploys parameterized Helm charts into namespace `pr-29`.
+4. **NGINX Ingress** routes incoming traffic via wildcard DNS (`http://pr-29.127-0-0-1.nip.io`).
+5. **Dedicated PostgreSQL StatefulSet** provisions an isolated persistent volume for schema migrations and test data.
+6. **Closing or merging the PR** triggers cascading finalizers that completely destroy the namespace, services, pods, and volumes.
 
 ---
 
@@ -34,10 +42,10 @@ Every time a developer opens a Pull Request (PR) on GitHub:
                                   +---------------------------------------+
                                        |                             |
                        1. PR Trigger   |                             | 2. PR Webhook /
-                                       v                             |    Polling
+                                       v                             |    Polling (30s)
                     +-----------------------------+                  v
                     |    GitHub Actions CI        |       +---------------------+
-                    | - Lint & Unit Test          |       |   Argo CD Server    |
+                    | - Lint & Pytest / Vite test |       |   Argo CD Server    |
                     | - Trivy Security Scan       |       |  (ApplicationSet    |
                     | - Build & Push Docker Image |       |   PR Generator)     |
                     |   to GHCR (tag: pr-<num>)   |       +---------------------+
@@ -50,66 +58,59 @@ Every time a developer opens a Pull Request (PR) on GitHub:
                     +-----------------------------+       | (kind / k3d / k3s)         |
                                                                |
                                                                +---> [ Namespace: pr-<num> ]
-                                                                      |-- NGINX Ingress (pr-<num>.<IP>.nip.io)
-                                                                      |-- FastAPI Backend Deployment
-                                                                      |-- React Frontend Deployment
-                                                                      |-- Dedicated Postgres StatefulSet
-                                                                      |-- ResourceQuota & Limits
+                                                                      |-- NGINX Ingress (pr-<num>.127-0-0-1.nip.io)
+                                                                      |-- React Frontend (Port 8080)
+                                                                      |-- FastAPI Backend (Port 8000)
+                                                                      |-- Dedicated Postgres 16 StatefulSet (1Gi PV)
+                                                                      |-- ResourceQuota & Security Contexts
 ```
 
 ### Key Components
-- **Sample App**: FastAPI (Python 3.11+) backend, React (Vite) frontend, PostgreSQL 16 database.
-- **Containers**: Multi-stage Docker builds, non-root security contexts, minimal Alpine-based images.
-- **Registry**: GitHub Container Registry (GHCR) with public/tokenless or read-token image pull.
-- **CI Pipeline**: GitHub Actions for linting, testing, Trivy container scanning, building, and tagging images (`pr-<number>`).
-- **Cluster Orchestration**: Local `kind` or `k3d` cluster (with `k3s` cloud migration readiness).
-- **GitOps Engine**: Argo CD with `ApplicationSet` utilizing the Pull Request generator.
-- **Packaging**: Single parametric Helm chart with templated overrides per PR namespace.
-- **Ingress Controller**: NGINX Ingress Controller with dynamic wildcard `nip.io` routing.
+| Component | Technology | Role |
+| :--- | :--- | :--- |
+| **Cluster Orchestration** | Kubernetes (KinD v1.37 / K3d) | Multi-node local Kubernetes cluster runtime |
+| **GitOps Controller** | Argo CD + ApplicationSet Controller | Pull Request SCM generator & automated reconciliation |
+| **Packaging** | Helm 3 | Parametric multi-tier application template |
+| **API Backend** | FastAPI (Python 3.11/3.12) + SQLAlchemy | RESTful Job Application Tracker with lifecycle probes |
+| **Web Frontend** | React + Vite + NGINX Unprivileged | Responsive Single Page Dashboard for job applications |
+| **Persistence** | PostgreSQL 16 (StatefulSet) | Dedicated per-PR persistent disk volume |
+| **Ingress & DNS** | NGINX Ingress Controller + `nip.io` | Zero-cost wildcard domain routing |
+| **CI / Security** | GitHub Actions + Aqua Trivy | Automated testing and container vulnerability scanning |
 
 ---
 
-## ⚙️ How It Works
+## 📸 Live Demo & Screenshots
 
-1. **Pull Request Trigger**:
-   - A developer creates PR `#42` on GitHub.
-   - GitHub Actions runs unit tests, static code analysis, and Trivy vulnerability scans.
-   - Upon test success, Docker images are built and pushed to GHCR with tag `pr-42`.
+### 1. Active Ephemeral Preview Dashboard
+Reviewers open `http://pr-29.127-0-0-1.nip.io` to interact with the full app, displaying the active PR badge, commit SHA, and database records:
+![Preview Environment Healthy Dashboard](docs/images/preview_environment_healthy.png)
 
-2. **GitOps Detection**:
-   - Argo CD ApplicationSet continuously queries GitHub's Pull Request API (or receives GitHub webhooks).
-   - It identifies PR `#42` is open and generates a new Argo CD Application targeting namespace `pr-42`.
+### 2. Argo CD GitOps Dashboard
+Argo CD continuously synchronizes state from Git; application `preview-pr-29` is shown in a clean `Synced` and `Healthy` state:
+![Argo CD Synced and Healthy](docs/images/argocd_synced_healthy.png)
 
-3. **Cluster Deployment**:
-   - Argo CD applies the Helm chart into namespace `pr-42`.
-   - Helm creates:
-     - Frontend Deployment (`pr-42` image tag) & ClusterIP Service.
-     - Backend Deployment (`pr-42` image tag) & ClusterIP Service.
-     - Dedicated PostgreSQL StatefulSet & PersistentVolumeClaim.
-     - ResourceQuota to limit CPU/Memory usage and prevent cluster exhaustion.
-     - Ingress rule with host `http://pr-42.<NODE_IP>.nip.io`.
+### 3. Docker Buildx Pipeline
+Container layers and images compiled and tracked through Docker Desktop:
+![Docker Desktop Builds History](docs/images/docker_desktop_builds.png)
 
-4. **PR Notification**:
-   - A secondary GitHub Action posts a comment on PR `#42` with the live preview link for QA, designers, and reviewers.
-
-5. **Automated Teardown**:
-   - When PR `#42` is merged or closed, the ApplicationSet removes the Application from the cluster.
-   - Finalizers cascade-delete the `pr-42` namespace, freeing compute and storage.
+### 4. GitOps PR Generator Configuration
+The declarative ApplicationSet specification in VS Code:
+![VS Code ApplicationSet Manifest](docs/images/vscode_applicationset_config.png)
 
 ---
 
 ## 📋 Prerequisites
 
 Before running this project locally, ensure you have installed:
-- [Docker](https://docs.docker.com/get-docker/) (v24.0+)
+- [Docker Desktop](https://docs.docker.com/get-docker/) (v24.0+)
 - [kubectl](https://kubernetes.io/docs/tasks/tools/) (v1.28+)
-- [kind](https://kind.sigs.k8s.io/) or [k3d](https://k3d.io/)
+- [kind](https://kind.sigs.k8s.io/) (v0.20+)
 - [Helm](https://helm.sh/docs/intro/install/) (v3.12+)
-- [GitHub CLI (gh)](https://cli.github.com/) *(optional, for PR testing)*
+- [Git](https://git-scm.com/)
 
 ---
 
-## 🛠️ Local Setup
+## 🛠️ Local Setup & Quickstart
 
 ### 1. Clone the Repository
 ```bash
@@ -118,7 +119,7 @@ cd preview-env-platform
 ```
 
 ### 2. Create the Local Kubernetes Cluster
-Run the automated bootstrap script to spin up a `kind` cluster configured with ingress ports (80/443), NGINX Ingress Controller, and Argo CD:
+Run the automated bootstrap script to create a KinD cluster configured with port mappings (80/443), NGINX Ingress Controller, and Argo CD:
 ```bash
 chmod +x scripts/setup-kind.sh
 ./scripts/setup-kind.sh
@@ -130,33 +131,65 @@ Apply the GitOps controller ApplicationSet definition:
 kubectl apply -f argocd/applicationset.yaml
 ```
 
-### 4. Run Smoke Tests
-Verify connectivity and ingress routing:
+### 4. Access Argo CD Dashboard
 ```bash
-chmod +x scripts/smoke-test.sh
-./scripts/smoke-test.sh
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+- **URL**: `https://localhost:8080`
+- **Username**: `admin`
+- **Password**: Retrieve with:
+  ```bash
+  kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath="{.data.password}" | base64 -d
+  ```
+
+### 5. Access Preview Environments
+Each pull request is automatically reachable at:
+`http://pr-<number>.127-0-0-1.nip.io`
+
+---
+
+## 🔄 Making Changes & Demoing the Workflow
+
+To push an update and see your changes reflected live in the preview environment:
+
+```cmd
+cd "D:\preview-env-platform"
+git add .
+git commit -m "feat(ui): update application tracker header"
+git push origin test-preview
 ```
 
----
-
-## 🎬 Demo
-
-*(Screenshots and walkthrough clips demonstrating PR creation, automated bot comments, live preview URLs, and automatic resource deletion upon merge).*
-
-- **PR Bot Comment Example**:
-  > 🚀 **Preview Environment Ready!**
-  > - **URL**: [http://pr-42.127.0.0.1.nip.io](http://pr-42.127.0.0.1.nip.io)
-  > - **Namespace**: `pr-42`
-  > - **Commit**: `a1b2c3d`
+1. **GitHub Actions** builds and publishes the new container image to GHCR with tag `pr-29`.
+2. **Argo CD** detects the new Git commit SHA within ~30–60 seconds and initiates an automated sync.
+3. **Kubernetes** performs a rolling update of the pods (`imagePullPolicy: Always`).
+4. Refresh `http://pr-29.127-0-0-1.nip.io` (`Ctrl + F5`) to see the updated interface live!
 
 ---
 
-## 💡 Problems I Hit and How I Fixed Them
+## 💡 Real-World Technical Problems & Post-Mortems
 
-| # | Problem Encountered | Root Cause | Solution & Fix |
+This repository includes real production-grade debugging scenarios documented in detail in [**`docs/PROJECT_DOCUMENTATION.md`**](docs/PROJECT_DOCUMENTATION.md) and [**`docs/problems-and-fixes.md`**](docs/problems-and-fixes.md):
+
+| # | Incident / Problem | Root Cause | Solution & Fix |
 |---|---------------------|------------|----------------|
-| 1 | **GHCR `ImagePullBackOff`** | Ephemeral PR namespaces lacked container registry credentials. | Configured cluster-wide image pull secret or set GHCR package visibility to public for preview images. |
-| 2 | **Orphaned PVCs on Teardown** | Kubernetes does not delete PVCs by default when deleting StatefulSets. | Enabled namespace deletion cascading in Argo CD application finalizers. |
-| 3 | **GitHub API Rate Limiting** | Argo CD ApplicationSet polling GitHub API hit unauthenticated rate limits (60 req/hr). | Configured a GitHub Personal Access Token (PAT) / GitHub App token in the ApplicationSet generator secret. |
-| 4 | **DNS Resolution Failure with `nip.io`** | Some local corporate DNS resolvers / ISPs block `nip.io` wildcard DNS resolution due to rebinding protection. | Added local `/etc/hosts` fallback and custom dnsmasq configuration guidelines. |
-| 5 | **Noisy Neighbor / Resource Starvation** | Multiple concurrent PRs consumed all node CPU and memory. | Implemented strict `ResourceQuota` and default `LimitRange` per ephemeral PR namespace. |
+| 1 | **Argo CD Sync Failure (`volumeClaimTemplates` immutable)** | `spec.volumeClaimTemplates` had dynamic commit-SHA labels that triggered immutable field patch errors on subsequent commits. | Removed mutable labels from `volumeClaimTemplates.metadata.labels`, keeping only invariant labels. |
+| 2 | **HTTP 500 `relation "applications" does not exist`** | Startup race condition: FastAPI's DB retry window (10s) timed out before fresh PostgreSQL PVC finished init, skipping table creation. | Expanded retry budget in `app/main.py` to 60s (15 retries × 4s), allowing auto-migration on fresh disks. |
+| 3 | **ApplicationSet Helm Values Path Mismatch** | ApplicationSet passed nested parameters (`global.prNumber`) that did not match flat top-level keys in `values.yaml`. | Aligned `argocd/applicationset.yaml` to pass flat keys matching `values.yaml`. |
+| 4 | **GHCR `ImagePullBackOff` in Dynamic Namespaces** | PR namespaces lacked container registry credentials. | Set GHCR package visibility to public for preview builds or injected namespace secrets via pre-sync hooks. |
+| 5 | **IPv6 Localhost Probe Failures** | Probes checking `localhost:8080` resolved to `::1` while NGINX listened on IPv4 (`127.0.0.1`). | Explicitly bound and probed `127.0.0.1` across all Dockerfiles and Kubernetes manifests. |
+| 6 | **Noisy Neighbor Resource Contention** | Multiple concurrent PRs risked exhausting host CPU/RAM. | Implemented strict per-namespace `ResourceQuota` (800m CPU, 768Mi RAM, 5 pods max). |
+
+---
+
+## 🛡️ Security Hardening
+
+- **Non-Root Execution**: Backend runs as UID `10001` (`appuser`); Frontend runs as UID `101` (`nginx-unprivileged`).
+- **Read-Only Root Filesystems**: Both deployments enforce `readOnlyRootFilesystem: true` with writable ephemeral directories mounted via `emptyDir` at `/tmp`.
+- **Minimal Capabilities**: All default Linux capabilities dropped (`capabilities.drop: [ALL]`).
+- **Resource Boundaries**: Strict namespace `ResourceQuota` prevents denial-of-service or node starvation.
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
