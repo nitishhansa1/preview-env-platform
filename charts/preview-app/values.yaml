@@ -44,10 +44,6 @@ ingress:
   # Kubernetes IngressClass name. Must match the IngressClass installed in the cluster.
   className: nginx
 
-  # Wildcard base domain used for nip.io routing.
-  # Final host will be: pr-<prNumber>.<baseDomain>
-  # Example: pr-42.127-0-0-1.nip.io (dashed IP format ensures public DNS resolves to 127.0.0.1)
-  # Change this to your cluster's node IP when running on kind/k3d.
   baseDomain: "127-0-0-1.nip.io"
 
   # Additional hostnames to accept (e.g. for custom domain routing)
